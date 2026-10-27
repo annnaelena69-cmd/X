@@ -418,15 +418,8 @@ class GameScreenCaptureService : android.app.Service() {
                 return@setOnImageAvailableListener
             }
             try {
-                val plane = image.planes[0]
-                val buffer = plane.buffer
-                val stride = plane.rowStride / plane.pixelStride
-                val full = android.graphics.Bitmap.createBitmap(stride, image.height, android.graphics.Bitmap.Config.ARGB_8888)
-                full.copyPixelsFromBuffer(buffer)
-                val frame = android.graphics.Bitmap.createBitmap(full, 0, 0, width, height)
-                full.recycle()
                 busy = true
-                recognizer.process(com.google.mlkit.vision.common.InputImage.fromBitmap(frame, 0))
+                recognizer.process(com.google.mlkit.vision.common.InputImage.fromMediaImage(image, 0))
                     .addOnSuccessListener { result ->
                         val text = result.text.take(4000)
                         getSharedPreferences("x_game_assistant", android.content.Context.MODE_PRIVATE)
@@ -435,14 +428,13 @@ class GameScreenCaptureService : android.app.Service() {
                     }
                     .addOnFailureListener { broadcast(ACTION_STATUS, "OCR gagal membaca frame. Coba lagi.") }
                     .addOnCompleteListener {
-                        frame.recycle()
+                        image.close()
                         busy = false
                     }
             } catch (_: Exception) {
                 busy = false
-                broadcast(ACTION_STATUS, "Frame layar tidak dapat diproses.")
-            } finally {
                 image.close()
+                broadcast(ACTION_STATUS, "Frame layar tidak dapat diproses.")
             }
         }, handler)
         display = projection?.createVirtualDisplay(
