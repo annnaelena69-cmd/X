@@ -70,6 +70,13 @@ class GameScreenCaptureService : Service() {
             worker = HandlerThread("XGameScreenReader").apply { start() }
             val handler = Handler(worker!!.looper)
             reader = ImageReader.newInstance(width, height, PixelFormat.RGBA_8888, 2)
+            projection?.registerCallback(object : MediaProjection.Callback() {
+                override fun onStop() {
+                    publishStatus("Berbagi layar berhenti.")
+                    stopCapture()
+                    stopSelf()
+                }
+            }, handler)
             reader?.setOnImageAvailableListener({ source ->
                 val now = SystemClock.elapsedRealtime()
                 if (now - lastAnalysisAt < 1400L || !analyzing.compareAndSet(false, true)) {
@@ -90,8 +97,9 @@ class GameScreenCaptureService : Service() {
                     val paddedWidth = image.width + rowPadding / pixelStride
                     val padded = Bitmap.createBitmap(paddedWidth, image.height, Bitmap.Config.ARGB_8888)
                     padded.copyPixelsFromBuffer(buffer)
-                    val bitmap = Bitmap.createBitmap(padded, 0, 0, image.width, image.height)
-                    padded.recycle()
+                    val bitmap = if (paddedWidth == image.width) padded else {
+                        Bitmap.createBitmap(padded, 0, 0, image.width, image.height).also { padded.recycle() }
+                    }
                     image.close()
                     val recognizer = textRecognizer
                     if (recognizer == null) {
@@ -124,13 +132,6 @@ class GameScreenCaptureService : Service() {
                 null,
                 handler
             )
-            projection?.registerCallback(object : MediaProjection.Callback() {
-                override fun onStop() {
-                    publishStatus("Berbagi layar berhenti.")
-                    stopCapture()
-                    stopSelf()
-                }
-            }, handler)
             publishStatus("Pembacaan layar aktif. Teks diproses di perangkat.")
         } catch (error: Exception) {
             publishStatus("Tidak dapat memulai pembacaan layar: ${error.localizedMessage ?: "kesalahan"}")
@@ -140,10 +141,17 @@ class GameScreenCaptureService : Service() {
     }
 
     private fun publishText(text: String) {
+        getSharedPreferences("x_game_assistant", MODE_PRIVATE).edit()
+            .putString("last_screen_text", text)
+            .putLong("last_screen_time", System.currentTimeMillis())
+            .apply()
         sendBroadcast(Intent(ACTION_OCR_RESULT).setPackage(packageName).putExtra(EXTRA_TEXT, text))
     }
 
     private fun publishStatus(status: String) {
+        getSharedPreferences("x_game_assistant", MODE_PRIVATE).edit()
+            .putString("capture_status", status)
+            .apply()
         sendBroadcast(Intent(ACTION_STATUS).setPackage(packageName).putExtra(EXTRA_TEXT, status))
     }
 
