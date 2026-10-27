@@ -1,4 +1,8 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
     <application
         android:allowBackup="true"
         android:label="X Game Assistant"
@@ -24,5 +28,10 @@
                 android:name="android.accessibilityservice"
                 android:resource="@xml/game_accessibility_service" />
         </service>
+        <service
+            android:name=".GameScreenCaptureService"
+            android:label="X Game Assistant screen analysis"
+            android:foregroundServiceType="mediaProjection"
+            android:exported="false" />
     </application>
 </manifest>
