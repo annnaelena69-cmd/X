@@ -7,8 +7,12 @@ on:
     branches: [ "main" ]
   workflow_dispatch:
 
+concurrency:
+  group: x-game-assistant-android-build
+  cancel-in-progress: true
+
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build:
@@ -26,9 +30,22 @@ jobs:
         with:
           gradle-version: "8.9"
       - name: Build debug APK
-        run: gradle assembleDebug
-      - name: Upload APK
+        run: gradle --no-daemon assembleDebug --stacktrace
+      - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: x-game-assistant-debug
           path: app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+      - name: Publish latest debug APK release
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        uses: ncipollo/release-action@v1
+        with:
+          tag: debug-latest
+          name: X Game Assistant latest debug
+          body: "Automated debug build from the main branch. This is a development APK and has not been tested on every Android device."
+          artifacts: app/build/outputs/apk/debug/app-debug.apk
+          allowUpdates: true
+          replacesArtifacts: true
+          removeArtifacts: true
+          token: ${{ secrets.GITHUB_TOKEN }}
