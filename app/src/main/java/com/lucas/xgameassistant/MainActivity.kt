@@ -1,10 +1,11 @@
 package com.lucas.xgameassistant
 
 import android.app.Activity
+import android.content.Intent
+import android.provider.Settings
 import android.os.Bundle
 import android.graphics.Color
 import android.graphics.Typeface
-import android.view.Gravity
 import android.view.ViewGroup
 import android.widget.Button
 import android.widget.LinearLayout
@@ -54,7 +55,7 @@ class MainActivity : Activity() {
             setPadding(0, 8, 0, 8)
         })
         content.addView(TextView(this).apply {
-            text = "Asisten game offline yang mencatat latihan dan menyesuaikan saran dari hasilmu. Tanpa API, akun, atau koneksi cloud."
+            text = "Asisten game offline. Fondasi kontrol Android dan catatan strategi disiapkan untuk dikembangkan menjadi bot per game."
             textSize = 14f
             setTextColor(Color.rgb(190, 190, 202))
             setLineSpacing(4f, 1f)
@@ -73,7 +74,13 @@ class MainActivity : Activity() {
         }
         content.addView(statsCard)
 
-        content.addView(sectionTitle("LATIHAN HARI INI", accent))
+        content.addView(sectionTitle("KONTROL ANDROID", accent))
+        content.addView(bodyText("Aktifkan layanan aksesibilitas secara manual di Pengaturan Android. Izin ini dapat melakukan gestur layar, jadi aktifkan hanya saat kamu memahami dan menyetujui penggunaannya."))
+        content.addView(actionButton("Buka pengaturan aksesibilitas", accent) {
+            startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+        })
+
+        content.addView(sectionTitle("LATIHAN DAN CATATAN", accent))
         content.addView(bodyText("Catat hasil latihan agar saran lokal bisa menyesuaikan progresmu. Data tersimpan di perangkat."))
         content.addView(actionButton("Latihan berhasil", accent) { record(true) })
         content.addView(actionButton("Latihan perlu diperbaiki", panel) { record(false) })
@@ -88,10 +95,10 @@ class MainActivity : Activity() {
         }
         content.addView(tipText)
 
-        content.addView(sectionTitle("FITUR BERIKUTNYA", accent))
-        content.addView(bodyText("• Profil untuk game yang kamu pilih\n• Catatan strategi dan target latihan\n• Analisis progres lokal\n• Kontrol otomatis hanya untuk game dan penggunaan yang kamu tentukan, dengan izin Android yang jelas"))
+        content.addView(sectionTitle("STATUS PENGEMBANGAN", accent))
+        content.addView(bodyText("Fondasi gestur Android sudah ditambahkan. Bot belum bisa membaca situasi permainan atau memainkan 9 Kings secara mandiri. Langkah berikutnya adalah pengenalan layar lokal dan strategi khusus game, lalu pengujian di perangkat. Game berbeda memerlukan profil atau logika berbeda."))
         content.addView(TextView(this).apply {
-            text = "Catatan: bot otomatis yang benar-benar memainkan game perlu dirancang sesuai game tujuan. Aplikasi ini belum mengontrol game lain dan tidak melewati sistem anti-cheat."
+            text = "Tidak menggunakan API cloud. Tidak dirancang untuk melewati anti-cheat atau perlindungan game."
             textSize = 12f
             setTextColor(Color.rgb(155, 155, 168))
             setPadding(0, 18, 0, 12)
