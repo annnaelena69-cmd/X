@@ -242,7 +242,11 @@ class MainActivity : Activity() {
         textSize = 14f
         setTextColor(Color.WHITE)
         setPadding(16, 16, 16, 16)
-        setBackgroundColor(panel)
+        background = android.graphics.drawable.GradientDrawable().apply {
+            cornerRadius = 18f
+            setColor(panel)
+            setStroke(1, Color.rgb(43, 43, 54))
+        }
         setLineSpacing(4f, 1f)
     }
 
@@ -251,7 +255,13 @@ class MainActivity : Activity() {
         isAllCaps = false
         textSize = 14f
         setTextColor(Color.WHITE)
-        setBackgroundColor(color)
+        background = android.graphics.drawable.GradientDrawable().apply {
+            cornerRadius = 18f
+            setColor(color)
+        }
+        elevation = 0f
+        minimumHeight = 52
+        setPadding(18, 12, 18, 12)
         setOnClickListener { action() }
         val params = LinearLayout.LayoutParams(-1, ViewGroup.LayoutParams.WRAP_CONTENT)
         params.topMargin = 8
