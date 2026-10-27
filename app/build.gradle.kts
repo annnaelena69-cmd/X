@@ -5,14 +5,14 @@ plugins {
 
 android {
     namespace = "com.lucas.xgameassistant"
-    compileSdk = 35
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "com.lucas.xgameassistant"
         minSdk = 26
-        targetSdk = 35
-        versionCode = 2
-        versionName = "0.2.0"
+        targetSdk = 36
+        versionCode = 3
+        versionName = "0.3.0"
     }
 
     buildTypes {
