@@ -10,7 +10,6 @@ import android.os.Build
 import android.os.Bundle
 import android.graphics.Color
 import android.graphics.Typeface
-import android.provider.Settings
 import android.view.ViewGroup
 import android.widget.Button
 import android.widget.LinearLayout
@@ -144,11 +143,8 @@ class MainActivity : Activity() {
         screenText = panelText(panel).apply { text = "Teks layar akan tampil di sini." }
         content.addView(screenText)
 
-        content.addView(sectionTitle("KONTROL ANDROID", accent))
-        content.addView(bodyText("Fondasi gestur Android sudah disiapkan. Kontrol otomatis belum diaktifkan, karena lokasi tombol dan keadaan game harus divalidasi agar bot tidak menekan pilihan yang salah."))
-        content.addView(actionButton("Buka pengaturan aksesibilitas", accent) {
-            startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
-        })
+        content.addView(sectionTitle("KONTROL GAME", accent))
+        content.addView(bodyText("Versi ini membaca teks layar dan memberi saran lokal. Kontrol otomatis atau penekanan tombol ke game belum tersedia, jadi aplikasi tidak akan bertindak sendiri di dalam permainan."))
 
         content.addView(sectionTitle("PROGRES LATIHAN", accent))
         statsText = panelText(panel)
