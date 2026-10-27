@@ -82,6 +82,19 @@ class MainActivity : Activity() {
             setPadding(22, 26, 22, 22)
             setBackgroundColor(bg)
         }
+        if (Build.VERSION.SDK_INT >= 30) {
+            root.setOnApplyWindowInsetsListener { view, insets ->
+                val bars = insets.getInsets(android.view.WindowInsets.Type.systemBars())
+                view.setPadding(22, 26 + bars.top, 22, 22 + bars.bottom)
+                insets
+            }
+        } else {
+            @Suppress("DEPRECATION")
+            root.setOnApplyWindowInsetsListener { view, insets ->
+                view.setPadding(22, 26 + insets.systemWindowInsetTop, 22, 22 + insets.systemWindowInsetBottom)
+                insets
+            }
+        }
         val scroll = ScrollView(this)
         val content = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -448,8 +461,9 @@ class GameScreenCaptureService : android.app.Service() {
         display = null
         try { reader?.close() } catch (_: Exception) {}
         reader = null
-        try { projection?.stop() } catch (_: Exception) {}
+        val oldProjection = projection
         projection = null
+        try { oldProjection?.stop() } catch (_: Exception) {}
         try { thread?.quitSafely() } catch (_: Exception) {}
         thread = null
         handler = null
