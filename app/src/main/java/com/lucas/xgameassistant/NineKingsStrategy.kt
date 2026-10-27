@@ -3,20 +3,13 @@ package com.lucas.xgameassistant
 import android.content.SharedPreferences
 import java.util.Locale
 
-data class GameAdvice(
-    val phase: String,
-    val recommendation: String,
-    val reason: String,
-    val confidence: Int
-)
-
 /**
  * Offline heuristic strategy starter for 9 Kings.
  * It reasons only from visible OCR text, so it must not invent board state
  * or trigger taps without a verified screen-specific action map.
  */
-class NineKingsStrategy(private val prefs: SharedPreferences) {
-    fun analyze(visibleText: String): GameAdvice {
+class NineKingsStrategy(private val prefs: SharedPreferences) : GameStrategy {
+    override fun analyze(visibleText: String): GameAdvice {
         val text = visibleText.lowercase(Locale.ROOT)
         val history = prefs.getInt("nk_observations", 0) + 1
         prefs.edit().putInt("nk_observations", history).apply()
