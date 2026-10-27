@@ -30,13 +30,11 @@ class MainActivity : Activity() {
         override fun onReceive(context: Context?, intent: Intent?) {
             val value = intent?.getStringExtra(GameScreenCaptureService.EXTRA_TEXT).orEmpty()
             when (intent?.action) {
-                GameScreenCaptureService.ACTION_OCR_RESULT -> {
-                    screenText.text = if (value.isBlank()) "Belum ada teks yang terbaca." else value
-                    val advice = NineKingsStrategy(prefs).analyze(value)
-                    adviceText.text = "TAHAP: ${advice.phase}\n\n${advice.recommendation}\n\nAlasan: ${advice.reason}\nKeyakinan awal: ${advice.confidence}%"
-                    prefs.edit().putString("last_screen_text", value).putString("last_advice", advice.recommendation).apply()
+                GameScreenCaptureService.ACTION_OCR_RESULT -> showRecognizedText(value)
+                GameScreenCaptureService.ACTION_STATUS -> {
+                    captureStatus.text = value
+                    prefs.edit().putString("capture_status", value).apply()
                 }
-                GameScreenCaptureService.ACTION_STATUS -> captureStatus.text = value
             }
         }
     }
@@ -63,6 +61,8 @@ class MainActivity : Activity() {
             }
             receiverRegistered = true
         }
+        captureStatus.text = prefs.getString("capture_status", "Status: pembacaan layar belum dimulai.")
+        showRecognizedText(prefs.getString("last_screen_text", "").orEmpty())
     }
 
     override fun onStop() {
@@ -102,14 +102,18 @@ class MainActivity : Activity() {
             typeface = Typeface.create("sans-serif", Typeface.BOLD)
             setPadding(0, 8, 0, 8)
         })
-        content.addView(bodyText("Asisten game lokal tanpa API cloud. Sekarang dapat membaca teks layar yang kamu izinkan dan memberi saran heuristik untuk 9 Kings."))
+        content.addView(bodyText("Asisten game lokal tanpa API cloud. Membaca teks layar dengan izinmu dan memberi saran heuristik untuk 9 Kings."))
 
         content.addView(sectionTitle("ANALISIS LAYAR", accent))
         captureStatus = panelText(panel).apply { text = "Status: pembacaan layar belum dimulai." }
         content.addView(captureStatus)
         content.addView(actionButton("Mulai baca layar", accent) { requestScreenCapture() })
         content.addView(actionButton("Hentikan pembacaan layar", panel) {
-            startService(Intent(this, GameScreenCaptureService::class.java).setAction(GameScreenCaptureService.ACTION_STOP))
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                startService(Intent(this, GameScreenCaptureService::class.java).setAction(GameScreenCaptureService.ACTION_STOP))
+            } else {
+                stopService(Intent(this, GameScreenCaptureService::class.java))
+            }
             captureStatus.text = "Meminta layanan berhenti..."
         })
 
@@ -124,7 +128,7 @@ class MainActivity : Activity() {
         content.addView(screenText)
 
         content.addView(sectionTitle("KONTROL ANDROID", accent))
-        content.addView(bodyText("Fondasi gestur memerlukan izin Aksesibilitas yang kamu aktifkan sendiri. Layanan itu belum dipakai untuk menekan tombol game secara otomatis, karena koordinat dan keadaan game harus divalidasi dulu."))
+        content.addView(bodyText("Fondasi gestur Android sudah disiapkan. Kontrol otomatis belum diaktifkan, karena lokasi tombol dan keadaan game harus divalidasi agar bot tidak menekan pilihan yang salah."))
         content.addView(actionButton("Buka pengaturan aksesibilitas", accent) {
             startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
         })
@@ -140,7 +144,7 @@ class MainActivity : Activity() {
         content.addView(tipText)
 
         content.addView(TextView(this).apply {
-            text = "Privasi: OCR diproses di perangkat. Aplikasi tidak mengirim tangkapan layar ke API cloud. Bot belum memainkan 9 Kings secara mandiri; modul keputusan dan tindakan otomatis masih perlu validasi langsung di game."
+            text = "Privasi: OCR diproses di perangkat. Tangkapan layar tidak dikirim ke API cloud. Bot belum memainkan 9 Kings secara mandiri; tindakan otomatis perlu validasi langsung di game."
             textSize = 12f
             setTextColor(Color.rgb(155, 155, 168))
             setPadding(0, 20, 0, 12)
@@ -151,6 +155,14 @@ class MainActivity : Activity() {
         root.addView(scroll, LinearLayout.LayoutParams(-1, 0, 1f))
         setContentView(root)
         refreshStats()
+    }
+
+    private fun showRecognizedText(value: String) {
+        if (!::screenText.isInitialized || !::adviceText.isInitialized) return
+        screenText.text = if (value.isBlank()) "Belum ada teks yang terbaca." else value
+        val advice = NineKingsStrategy(prefs).analyze(value)
+        adviceText.text = "TAHAP: ${advice.phase}\n\n${advice.recommendation}\n\nAlasan: ${advice.reason}\nKeyakinan awal: ${advice.confidence}%"
+        prefs.edit().putString("last_advice", advice.recommendation).apply()
     }
 
     private fun requestScreenCapture() {
