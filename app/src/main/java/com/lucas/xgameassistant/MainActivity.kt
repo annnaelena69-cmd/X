@@ -102,7 +102,11 @@ class MainActivity : Activity() {
             typeface = Typeface.create("sans-serif", Typeface.BOLD)
             setPadding(0, 8, 0, 8)
         })
-        content.addView(bodyText("Asisten game lokal tanpa API cloud. Membaca teks layar dengan izinmu dan memberi saran heuristik untuk 9 Kings."))
+        content.addView(bodyText("Asisten game lokal tanpa API cloud. Pilih profil game, lalu baca teks layar dengan izinmu untuk mendapat saran lokal."))
+
+        content.addView(sectionTitle("PROFIL GAME", accent))
+        content.addView(actionButton("Pilih profil 9 Kings", accent) { selectGame(GameStrategyRegistry.NINE_KINGS) })
+        content.addView(actionButton("Pilih profil game lain", panel) { selectGame(GameStrategyRegistry.GENERIC) })
 
         content.addView(sectionTitle("ANALISIS LAYAR", accent))
         captureStatus = panelText(panel).apply { text = "Status: pembacaan layar belum dimulai." }
@@ -160,9 +164,17 @@ class MainActivity : Activity() {
     private fun showRecognizedText(value: String) {
         if (!::screenText.isInitialized || !::adviceText.isInitialized) return
         screenText.text = if (value.isBlank()) "Belum ada teks yang terbaca." else value
-        val advice = NineKingsStrategy(prefs).analyze(value)
+        val gameId = prefs.getString("selected_game", GameStrategyRegistry.NINE_KINGS) ?: GameStrategyRegistry.NINE_KINGS
+        val advice = GameStrategyRegistry.forGame(gameId, prefs).analyze(value)
         adviceText.text = "TAHAP: ${advice.phase}\n\n${advice.recommendation}\n\nAlasan: ${advice.reason}\nKeyakinan awal: ${advice.confidence}%"
         prefs.edit().putString("last_advice", advice.recommendation).apply()
+    }
+
+    private fun selectGame(gameId: String) {
+        prefs.edit().putString("selected_game", gameId).apply()
+        val name = if (gameId == GameStrategyRegistry.NINE_KINGS) "9 Kings" else "game lain"
+        captureStatus.text = "Profil aktif: $name"
+        showRecognizedText(prefs.getString("last_screen_text", "").orEmpty())
     }
 
     private fun requestScreenCapture() {
