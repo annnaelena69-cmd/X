@@ -269,3 +269,207 @@ class MainActivity : Activity() {
         private const val REQUEST_CAPTURE = 4206
     }
 }
+
+
+// Self-contained local strategy models. Kept in this source file so the project does not
+// depend on missing auxiliary Kotlin files.
+data class StrategyAdvice(
+    val phase: String,
+    val recommendation: String,
+    val reason: String,
+    val confidence: Int
+)
+
+private interface LocalGameStrategy {
+    fun analyze(text: String): StrategyAdvice
+}
+
+private class NineKingsLocalStrategy : LocalGameStrategy {
+    override fun analyze(rawText: String): StrategyAdvice {
+        val text = rawText.lowercase()
+        return when {
+            text.isBlank() -> StrategyAdvice("Menunggu layar", "Buka 9 Kings dan pastikan teks game terlihat.", "Belum ada teks yang dapat dianalisis.", 10)
+            listOf("upgrade", "choose", "select", "pilih").any { it in text } ->
+                StrategyAdvice("Pilihan", "Bandingkan efek tiap pilihan dan utamakan sinergi dengan strategi kerajaanmu.", "Teks mungkin menandakan layar pilihan; rekomendasi masih umum.", 35)
+            listOf("wave", "enemy", "battle", "musuh", "serangan").any { it in text } ->
+                StrategyAdvice("Pertempuran", "Periksa kekuatan pasukan, pertahanan, dan sumber daya sebelum bertindak.", "Terdeteksi istilah pertempuran, tetapi status unit belum dipahami penuh.", 30)
+            listOf("gold", "food", "wood", "stone", "resource", "sumber daya").any { it in text } ->
+                StrategyAdvice("Ekonomi", "Jaga keseimbangan sumber daya dan hindari menghabiskan semuanya untuk satu peningkatan.", "Terdeteksi istilah sumber daya; nilai dan biaya belum terbaca andal.", 30)
+            else -> StrategyAdvice("Analisis dasar", "Amati kondisi kerajaan dan pilih tindakan yang mendukung rencana jangka panjang.", "Belum ada pola teks yang cukup kuat untuk saran spesifik.", 20)
+        }
+    }
+}
+
+private class GenericLocalStrategy : LocalGameStrategy {
+    override fun analyze(text: String) = StrategyAdvice(
+        "Profil umum",
+        "Profil khusus game ini belum dikonfigurasi. Pertimbangkan tujuan, sumber daya, dan risiko yang terlihat.",
+        if (text.isBlank()) "Belum ada teks layar." else "Profil umum tidak mengenali mekanik game secara khusus.",
+        10
+    )
+}
+
+object GameStrategyRegistry {
+    const val NINE_KINGS = "nine_kings"
+    const val GENERIC = "generic"
+    fun forGame(gameId: String, prefs: android.content.SharedPreferences): LocalGameStrategy =
+        if (gameId == NINE_KINGS) NineKingsLocalStrategy() else GenericLocalStrategy()
+}
+
+/**
+ * Android 14+ requires a foreground media-projection service. The user must approve
+ * each capture session through Android's own screen-sharing consent dialog.
+ */
+class GameScreenCaptureService : android.app.Service() {
+    private var projection: android.media.projection.MediaProjection? = null
+    private var display: android.hardware.display.VirtualDisplay? = null
+    private var reader: android.media.ImageReader? = null
+    private var thread: android.os.HandlerThread? = null
+    private var handler: android.os.Handler? = null
+    private var busy = false
+    private val recognizer by lazy {
+        com.google.mlkit.vision.text.TextRecognition.getClient(
+            com.google.mlkit.vision.text.latin.TextRecognizerOptions.DEFAULT_OPTIONS
+        )
+    }
+
+    override fun onBind(intent: android.content.Intent?): android.os.IBinder? = null
+
+    override fun onStartCommand(intent: android.content.Intent?, flags: Int, startId: Int): Int {
+        if (intent?.action == ACTION_STOP) {
+            stopCapture()
+            stopSelf()
+            return START_NOT_STICKY
+        }
+        startForeground(NOTIFICATION_ID, notification())
+        val code = intent?.getIntExtra(EXTRA_RESULT_CODE, 0) ?: 0
+        val data: android.content.Intent? = if (android.os.Build.VERSION.SDK_INT >= 33) {
+            intent?.getParcelableExtra(EXTRA_RESULT_DATA, android.content.Intent::class.java)
+        } else {
+            @Suppress("DEPRECATION")
+            intent?.getParcelableExtra(EXTRA_RESULT_DATA)
+        }
+        if (code == 0 || data == null) {
+            broadcast(ACTION_STATUS, "Izin berbagi layar tidak tersedia.")
+            stopSelf()
+            return START_NOT_STICKY
+        }
+        try {
+            val manager = getSystemService(android.content.Context.MEDIA_PROJECTION_SERVICE) as android.media.projection.MediaProjectionManager
+            projection = manager.getMediaProjection(code, data)
+            projection?.registerCallback(object : android.media.projection.MediaProjection.Callback() {
+                override fun onStop() {
+                    stopCapture()
+                    stopSelf()
+                }
+            }, android.os.Handler(mainLooper))
+            beginCapture()
+            broadcast(ACTION_STATUS, "Pembacaan layar aktif. OCR berjalan lokal di perangkat.")
+        } catch (e: Exception) {
+            broadcast(ACTION_STATUS, "Gagal memulai pembacaan layar: ${e.localizedMessage ?: "kesalahan"}")
+            stopCapture()
+            stopSelf()
+        }
+        return START_NOT_STICKY
+    }
+
+    private fun notification(): android.app.Notification {
+        val channel = "x_game_assistant_capture"
+        if (android.os.Build.VERSION.SDK_INT >= 26) {
+            val manager = getSystemService(android.app.NotificationManager::class.java)
+            manager.createNotificationChannel(android.app.NotificationChannel(channel, "Analisis layar", android.app.NotificationManager.IMPORTANCE_LOW))
+        }
+        val builder = if (android.os.Build.VERSION.SDK_INT >= 26) android.app.Notification.Builder(this, channel)
+            else @Suppress("DEPRECATION") android.app.Notification.Builder(this)
+        return builder.setContentTitle("X Game Assistant")
+            .setContentText("Analisis layar aktif di perangkat")
+            .setSmallIcon(android.R.drawable.ic_menu_view)
+            .setOngoing(true)
+            .build()
+    }
+
+    private fun beginCapture() {
+        val metrics = android.util.DisplayMetrics()
+        val wm = getSystemService(android.content.Context.WINDOW_SERVICE) as android.view.WindowManager
+        @Suppress("DEPRECATION")
+        wm.defaultDisplay.getRealMetrics(metrics)
+        val width = metrics.widthPixels.coerceAtLeast(1)
+        val height = metrics.heightPixels.coerceAtLeast(1)
+        thread = android.os.HandlerThread("x-game-assistant-ocr").also { it.start() }
+        handler = android.os.Handler(thread!!.looper)
+        reader = android.media.ImageReader.newInstance(width, height, android.graphics.PixelFormat.RGBA_8888, 2)
+        reader?.setOnImageAvailableListener({ source ->
+            val image = source.acquireLatestImage() ?: return@setOnImageAvailableListener
+            if (busy) {
+                image.close()
+                return@setOnImageAvailableListener
+            }
+            try {
+                val plane = image.planes[0]
+                val buffer = plane.buffer
+                val stride = plane.rowStride / plane.pixelStride
+                val full = android.graphics.Bitmap.createBitmap(stride, image.height, android.graphics.Bitmap.Config.ARGB_8888)
+                full.copyPixelsFromBuffer(buffer)
+                val frame = android.graphics.Bitmap.createBitmap(full, 0, 0, width, height)
+                full.recycle()
+                busy = true
+                recognizer.process(com.google.mlkit.vision.common.InputImage.fromBitmap(frame, 0))
+                    .addOnSuccessListener { result ->
+                        val text = result.text.take(4000)
+                        getSharedPreferences("x_game_assistant", android.content.Context.MODE_PRIVATE)
+                            .edit().putString("last_screen_text", text).apply()
+                        broadcast(ACTION_OCR_RESULT, text)
+                    }
+                    .addOnFailureListener { broadcast(ACTION_STATUS, "OCR gagal membaca frame. Coba lagi.") }
+                    .addOnCompleteListener {
+                        frame.recycle()
+                        busy = false
+                    }
+            } catch (_: Exception) {
+                busy = false
+                broadcast(ACTION_STATUS, "Frame layar tidak dapat diproses.")
+            } finally {
+                image.close()
+            }
+        }, handler)
+        display = projection?.createVirtualDisplay(
+            "XGameAssistant", width, height, metrics.densityDpi,
+            android.hardware.display.DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
+            reader?.surface, null, handler
+        )
+    }
+
+    private fun broadcast(action: String, value: String) {
+        sendBroadcast(android.content.Intent(action).setPackage(packageName).putExtra(EXTRA_TEXT, value))
+    }
+
+    private fun stopCapture() {
+        try { display?.release() } catch (_: Exception) {}
+        display = null
+        try { reader?.close() } catch (_: Exception) {}
+        reader = null
+        try { projection?.stop() } catch (_: Exception) {}
+        projection = null
+        try { thread?.quitSafely() } catch (_: Exception) {}
+        thread = null
+        handler = null
+        try { recognizer.close() } catch (_: Exception) {}
+        if (android.os.Build.VERSION.SDK_INT >= 24) stopForeground(STOP_FOREGROUND_REMOVE)
+        else @Suppress("DEPRECATION") stopForeground(true)
+    }
+
+    override fun onDestroy() {
+        stopCapture()
+        super.onDestroy()
+    }
+
+    companion object {
+        const val ACTION_OCR_RESULT = "com.lucas.xgameassistant.OCR_RESULT"
+        const val ACTION_STATUS = "com.lucas.xgameassistant.CAPTURE_STATUS"
+        const val ACTION_STOP = "com.lucas.xgameassistant.STOP_CAPTURE"
+        const val EXTRA_TEXT = "extra_text"
+        const val EXTRA_RESULT_CODE = "result_code"
+        const val EXTRA_RESULT_DATA = "result_data"
+        private const val NOTIFICATION_ID = 4601
+    }
+}
