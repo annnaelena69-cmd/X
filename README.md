@@ -1,22 +1,21 @@
 # X Game Assistant
 
-A local-first Android game assistant prototype. No cloud API or account is required.
+A local-first Android game assistant prototype. Screen text recognition and strategy heuristics run on-device; no cloud API is used.
 
-## Current prototype
+## Implemented in source
 - Dark native Android interface
-- Offline practice history stored on-device
-- Simple adaptive suggestions based on locally recorded results
-- Android AccessibilityService foundation with user-authorized screen gestures
-- GitHub Actions workflow configured to build a debug APK artifact
+- Offline practice history in SharedPreferences
+- Android screen-capture consent flow and foreground capture service
+- On-device OCR with the bundled ML Kit text-recognition model
+- Starter 9 Kings heuristic strategy module
+- Generic strategy interface and registry for adding other game profiles
+- Android AccessibilityService gesture foundation
+- GitHub Actions workflow configured to build and upload a debug APK
 
-## Automation roadmap
-1. Add local screen capture and recognition with clear Android permission prompts.
-2. Build and test a game-specific decision module for the Android version of 9 Kings.
-3. Add reusable game profiles and local strategy memory for other compatible Android games.
-4. Test the APK on a real device and fix build/runtime issues before calling it ready.
+## Current limits
+This is an early prototype, not a completed autonomous game-playing bot. It can read visible text and give basic heuristic advice. It does not yet understand the full board, compare card effects reliably, or automatically play through a 9 Kings run. Other games need their own screen interpretation and strategy modules. A generic bot cannot be guaranteed to play every game correctly.
 
-## Important limitations
-The current app is a foundation, not a finished game-playing bot. It does not yet recognize game screens or autonomously play 9 Kings or other games. Different games require different visual recognition and strategy logic; universal compatibility cannot be guaranteed. Automation must respect Android permissions, each game's rules, and anti-cheat/access protections.
+Automation must respect Android permissions and game rules. No anti-cheat or access-protection bypass is included.
 
-## Build
-The GitHub Actions workflow is configured to build and upload a debug APK. Build success must be verified in the Actions run before the APK can be described as tested.
+## Build and verification
+The GitHub Actions workflow is configured to run `gradle assembleDebug` on pushes to `main` and upload `app/build/outputs/apk/debug/app-debug.apk`. A successful workflow run and on-device test are required before calling the APK verified.
