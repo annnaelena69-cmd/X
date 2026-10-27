@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="accessibility_description">Allows X Game Assistant to perform user-authorized screen gestures for supported games.</string>
+</resources>
