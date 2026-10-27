@@ -18,9 +18,9 @@ import android.os.Handler
 import android.os.HandlerThread
 import android.os.IBinder
 import android.os.SystemClock
-import androidx.core.app.NotificationCompat
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.text.TextRecognition
+import com.google.mlkit.vision.text.TextRecognizer
 import com.google.mlkit.vision.text.latin.TextRecognizerOptions
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -29,9 +29,9 @@ class GameScreenCaptureService : Service() {
     private var display: VirtualDisplay? = null
     private var reader: ImageReader? = null
     private var worker: HandlerThread? = null
+    private var textRecognizer: TextRecognizer? = null
     private var lastAnalysisAt = 0L
     private val analyzing = AtomicBoolean(false)
-    private val recognizer by lazy { TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS) }
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -62,6 +62,7 @@ class GameScreenCaptureService : Service() {
         try {
             val manager = getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
             projection = manager.getMediaProjection(resultCode, data)
+            textRecognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
             val metrics = resources.displayMetrics
             val width = metrics.widthPixels.coerceAtLeast(1)
             val height = metrics.heightPixels.coerceAtLeast(1)
@@ -92,10 +93,14 @@ class GameScreenCaptureService : Service() {
                     val bitmap = Bitmap.createBitmap(padded, 0, 0, image.width, image.height)
                     padded.recycle()
                     image.close()
+                    val recognizer = textRecognizer
+                    if (recognizer == null) {
+                        bitmap.recycle()
+                        analyzing.set(false)
+                        return@setOnImageAvailableListener
+                    }
                     recognizer.process(InputImage.fromBitmap(bitmap, 0))
-                        .addOnSuccessListener { result ->
-                            publishText(result.text)
-                        }
+                        .addOnSuccessListener { result -> publishText(result.text) }
                         .addOnFailureListener { error ->
                             publishStatus("OCR lokal gagal: ${error.localizedMessage ?: "kesalahan tidak diketahui"}")
                         }
@@ -104,7 +109,7 @@ class GameScreenCaptureService : Service() {
                             analyzing.set(false)
                         }
                 } catch (error: Exception) {
-                    image.close()
+                    try { image.close() } catch (_: Exception) {}
                     analyzing.set(false)
                     publishStatus("Gagal membaca frame layar.")
                 }
@@ -135,15 +140,11 @@ class GameScreenCaptureService : Service() {
     }
 
     private fun publishText(text: String) {
-        val intent = Intent(ACTION_OCR_RESULT).setPackage(packageName)
-            .putExtra(EXTRA_TEXT, text)
-        sendBroadcast(intent)
+        sendBroadcast(Intent(ACTION_OCR_RESULT).setPackage(packageName).putExtra(EXTRA_TEXT, text))
     }
 
     private fun publishStatus(status: String) {
-        val intent = Intent(ACTION_STATUS).setPackage(packageName)
-            .putExtra(EXTRA_TEXT, status)
-        sendBroadcast(intent)
+        sendBroadcast(Intent(ACTION_STATUS).setPackage(packageName).putExtra(EXTRA_TEXT, status))
     }
 
     private fun stopCapture() {
@@ -156,7 +157,8 @@ class GameScreenCaptureService : Service() {
         projection = null
         try { worker?.quitSafely() } catch (_: Exception) {}
         worker = null
-        if (::recognizer.isInitialized) recognizer.close()
+        try { textRecognizer?.close() } catch (_: Exception) {}
+        textRecognizer = null
         stopForeground(STOP_FOREGROUND_REMOVE)
     }
 
@@ -170,12 +172,22 @@ class GameScreenCaptureService : Service() {
             )
             getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
         }
-        return NotificationCompat.Builder(this, channelId)
-            .setContentTitle("X Game Assistant")
-            .setContentText("Membaca teks layar secara lokal")
-            .setSmallIcon(android.R.drawable.ic_menu_view)
-            .setOngoing(true)
-            .build()
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            Notification.Builder(this, channelId)
+                .setContentTitle("X Game Assistant")
+                .setContentText("Membaca teks layar secara lokal")
+                .setSmallIcon(android.R.drawable.ic_menu_view)
+                .setOngoing(true)
+                .build()
+        } else {
+            @Suppress("DEPRECATION")
+            Notification.Builder(this)
+                .setContentTitle("X Game Assistant")
+                .setContentText("Membaca teks layar secara lokal")
+                .setSmallIcon(android.R.drawable.ic_menu_view)
+                .setOngoing(true)
+                .build()
+        }
     }
 
     override fun onDestroy() {
