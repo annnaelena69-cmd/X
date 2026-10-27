@@ -1,11 +1,16 @@
 package com.lucas.xgameassistant
 
 import android.app.Activity
+import android.content.BroadcastReceiver
+import android.content.Context
 import android.content.Intent
-import android.provider.Settings
+import android.content.IntentFilter
+import android.media.projection.MediaProjectionManager
+import android.os.Build
 import android.os.Bundle
 import android.graphics.Color
 import android.graphics.Typeface
+import android.provider.Settings
 import android.view.ViewGroup
 import android.widget.Button
 import android.widget.LinearLayout
@@ -16,12 +21,56 @@ class MainActivity : Activity() {
     private val prefs by lazy { getSharedPreferences("x_game_assistant", MODE_PRIVATE) }
     private lateinit var statsText: TextView
     private lateinit var tipText: TextView
+    private lateinit var screenText: TextView
+    private lateinit var captureStatus: TextView
+    private lateinit var adviceText: TextView
+    private var receiverRegistered = false
+
+    private val screenReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            val value = intent?.getStringExtra(GameScreenCaptureService.EXTRA_TEXT).orEmpty()
+            when (intent?.action) {
+                GameScreenCaptureService.ACTION_OCR_RESULT -> {
+                    screenText.text = if (value.isBlank()) "Belum ada teks yang terbaca." else value
+                    val advice = NineKingsStrategy(prefs).analyze(value)
+                    adviceText.text = "TAHAP: ${advice.phase}\n\n${advice.recommendation}\n\nAlasan: ${advice.reason}\nKeyakinan awal: ${advice.confidence}%"
+                    prefs.edit().putString("last_screen_text", value).putString("last_advice", advice.recommendation).apply()
+                }
+                GameScreenCaptureService.ACTION_STATUS -> captureStatus.text = value
+            }
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         window.statusBarColor = Color.rgb(10, 10, 13)
         window.navigationBarColor = Color.rgb(10, 10, 13)
         render()
+    }
+
+    override fun onStart() {
+        super.onStart()
+        if (!receiverRegistered) {
+            val filter = IntentFilter().apply {
+                addAction(GameScreenCaptureService.ACTION_OCR_RESULT)
+                addAction(GameScreenCaptureService.ACTION_STATUS)
+            }
+            if (Build.VERSION.SDK_INT >= 33) {
+                registerReceiver(screenReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
+            } else {
+                @Suppress("DEPRECATION")
+                registerReceiver(screenReceiver, filter)
+            }
+            receiverRegistered = true
+        }
+    }
+
+    override fun onStop() {
+        if (receiverRegistered) {
+            try { unregisterReceiver(screenReceiver) } catch (_: Exception) {}
+            receiverRegistered = false
+        }
+        super.onStop()
     }
 
     private fun render() {
@@ -33,7 +82,6 @@ class MainActivity : Activity() {
             setPadding(22, 26, 22, 22)
             setBackgroundColor(bg)
         }
-
         val scroll = ScrollView(this)
         val content = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -54,60 +102,86 @@ class MainActivity : Activity() {
             typeface = Typeface.create("sans-serif", Typeface.BOLD)
             setPadding(0, 8, 0, 8)
         })
-        content.addView(TextView(this).apply {
-            text = "Asisten game offline. Fondasi kontrol Android dan catatan strategi disiapkan untuk dikembangkan menjadi bot per game."
-            textSize = 14f
-            setTextColor(Color.rgb(190, 190, 202))
-            setLineSpacing(4f, 1f)
+        content.addView(bodyText("Asisten game lokal tanpa API cloud. Sekarang dapat membaca teks layar yang kamu izinkan dan memberi saran heuristik untuk 9 Kings."))
+
+        content.addView(sectionTitle("ANALISIS LAYAR", accent))
+        captureStatus = panelText(panel).apply { text = "Status: pembacaan layar belum dimulai." }
+        content.addView(captureStatus)
+        content.addView(actionButton("Mulai baca layar", accent) { requestScreenCapture() })
+        content.addView(actionButton("Hentikan pembacaan layar", panel) {
+            startService(Intent(this, GameScreenCaptureService::class.java).setAction(GameScreenCaptureService.ACTION_STOP))
+            captureStatus.text = "Meminta layanan berhenti..."
         })
 
-        statsText = TextView(this).apply {
-            textSize = 15f
-            setTextColor(Color.WHITE)
-            setPadding(16, 16, 16, 16)
-            setBackgroundColor(panel)
+        content.addView(sectionTitle("SARAN LOKAL 9 KINGS", accent))
+        adviceText = panelText(panel).apply {
+            text = "Buka 9 Kings, lalu mulai baca layar. Saran masih heuristik dan belum menggerakkan permainan secara otomatis."
         }
-        val statsCard = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(0, 20, 0, 0)
-            addView(statsText)
-        }
-        content.addView(statsCard)
+        content.addView(adviceText)
+
+        content.addView(sectionTitle("TEKS YANG TERDETEKSI", accent))
+        screenText = panelText(panel).apply { text = "Teks layar akan tampil di sini." }
+        content.addView(screenText)
 
         content.addView(sectionTitle("KONTROL ANDROID", accent))
-        content.addView(bodyText("Aktifkan layanan aksesibilitas secara manual di Pengaturan Android. Izin ini dapat melakukan gestur layar, jadi aktifkan hanya saat kamu memahami dan menyetujui penggunaannya."))
+        content.addView(bodyText("Fondasi gestur memerlukan izin Aksesibilitas yang kamu aktifkan sendiri. Layanan itu belum dipakai untuk menekan tombol game secara otomatis, karena koordinat dan keadaan game harus divalidasi dulu."))
         content.addView(actionButton("Buka pengaturan aksesibilitas", accent) {
             startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
         })
 
-        content.addView(sectionTitle("LATIHAN DAN CATATAN", accent))
-        content.addView(bodyText("Catat hasil latihan agar saran lokal bisa menyesuaikan progresmu. Data tersimpan di perangkat."))
-        content.addView(actionButton("Latihan berhasil", accent) { record(true) })
-        content.addView(actionButton("Latihan perlu diperbaiki", panel) { record(false) })
+        content.addView(sectionTitle("PROGRES LATIHAN", accent))
+        statsText = panelText(panel)
+        content.addView(statsText)
+        content.addView(actionButton("Catat sesi berhasil", accent) { record(true) })
+        content.addView(actionButton("Catat sesi perlu diperbaiki", panel) { record(false) })
 
-        content.addView(sectionTitle("SARAN ADAPTIF", accent))
-        tipText = TextView(this).apply {
-            textSize = 15f
-            setTextColor(Color.WHITE)
-            setPadding(16, 16, 16, 16)
-            setBackgroundColor(panel)
-            setLineSpacing(5f, 1f)
-        }
+        content.addView(sectionTitle("SARAN LATIHAN", accent))
+        tipText = panelText(panel)
         content.addView(tipText)
 
-        content.addView(sectionTitle("STATUS PENGEMBANGAN", accent))
-        content.addView(bodyText("Fondasi gestur Android sudah ditambahkan. Bot belum bisa membaca situasi permainan atau memainkan 9 Kings secara mandiri. Langkah berikutnya adalah pengenalan layar lokal dan strategi khusus game, lalu pengujian di perangkat. Game berbeda memerlukan profil atau logika berbeda."))
         content.addView(TextView(this).apply {
-            text = "Tidak menggunakan API cloud. Tidak dirancang untuk melewati anti-cheat atau perlindungan game."
+            text = "Privasi: OCR diproses di perangkat. Aplikasi tidak mengirim tangkapan layar ke API cloud. Bot belum memainkan 9 Kings secara mandiri; modul keputusan dan tindakan otomatis masih perlu validasi langsung di game."
             textSize = 12f
             setTextColor(Color.rgb(155, 155, 168))
-            setPadding(0, 18, 0, 12)
+            setPadding(0, 20, 0, 12)
+            setLineSpacing(3f, 1f)
         })
 
         scroll.addView(content)
         root.addView(scroll, LinearLayout.LayoutParams(-1, 0, 1f))
         setContentView(root)
         refreshStats()
+    }
+
+    private fun requestScreenCapture() {
+        try {
+            val manager = getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
+            @Suppress("DEPRECATION")
+            startActivityForResult(manager.createScreenCaptureIntent(), REQUEST_CAPTURE)
+        } catch (error: Exception) {
+            captureStatus.text = "Tidak dapat meminta izin berbagi layar: ${error.localizedMessage ?: "kesalahan"}"
+        }
+    }
+
+    @Deprecated("Uses activity result for compatibility with Android 8+")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode != REQUEST_CAPTURE) return
+        if (resultCode != RESULT_OK || data == null) {
+            captureStatus.text = "Izin berbagi layar dibatalkan."
+            return
+        }
+        val serviceIntent = Intent(this, GameScreenCaptureService::class.java).apply {
+            putExtra(GameScreenCaptureService.EXTRA_RESULT_CODE, resultCode)
+            putExtra(GameScreenCaptureService.EXTRA_RESULT_DATA, data)
+        }
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) startForegroundService(serviceIntent)
+            else startService(serviceIntent)
+            captureStatus.text = "Memulai pembacaan layar..."
+        } catch (error: Exception) {
+            captureStatus.text = "Layanan gagal dimulai: ${error.localizedMessage ?: "kesalahan"}"
+        }
     }
 
     private fun sectionTitle(value: String, color: Int) = TextView(this).apply {
@@ -125,6 +199,14 @@ class MainActivity : Activity() {
         setTextColor(Color.rgb(190, 190, 202))
         setLineSpacing(4f, 1f)
         setPadding(0, 0, 0, 10)
+    }
+
+    private fun panelText(panel: Int) = TextView(this).apply {
+        textSize = 14f
+        setTextColor(Color.WHITE)
+        setPadding(16, 16, 16, 16)
+        setBackgroundColor(panel)
+        setLineSpacing(4f, 1f)
     }
 
     private fun actionButton(label: String, color: Int, action: () -> Unit) = Button(this).apply {
@@ -157,5 +239,9 @@ class MainActivity : Activity() {
             rate >= 45 -> "Progres sedang dibangun. Fokus pada satu keterampilan setiap sesi, lalu catat hasilnya."
             else -> "Coba kurangi target jadi lebih kecil dan ulangi latihan dasar. Satu perubahan setiap sesi lebih mudah dievaluasi."
         }
+    }
+
+    companion object {
+        private const val REQUEST_CAPTURE = 4206
     }
 }
