@@ -341,7 +341,7 @@ class GameScreenCaptureService : android.app.Service() {
             stopSelf()
             return START_NOT_STICKY
         }
-        startForeground(NOTIFICATION_ID, notification())
+        if (android.os.Build.VERSION.SDK_INT >= 29) {\n            startForeground(NOTIFICATION_ID, notification(), android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION)\n        } else {\n            startForeground(NOTIFICATION_ID, notification())\n        }
         val code = intent?.getIntExtra(EXTRA_RESULT_CODE, 0) ?: 0
         val data: android.content.Intent? = if (android.os.Build.VERSION.SDK_INT >= 33) {
             intent?.getParcelableExtra(EXTRA_RESULT_DATA, android.content.Intent::class.java)
