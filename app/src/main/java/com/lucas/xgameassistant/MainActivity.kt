@@ -364,7 +364,16 @@ class GameScreenCaptureService : android.app.Service() {
             stopSelf()
             return START_NOT_STICKY
         }
-        if (android.os.Build.VERSION.SDK_INT >= 29) {\n            startForeground(NOTIFICATION_ID, notification(), android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION)\n        } else {\n            startForeground(NOTIFICATION_ID, notification())\n        }
+        if (android.os.Build.VERSION.SDK_INT >= 29) {
+            startForeground(
+                NOTIFICATION_ID,
+                notification(),
+                android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION
+            )
+        } else {
+            @Suppress("DEPRECATION")
+            startForeground(NOTIFICATION_ID, notification())
+        }
         val code = intent?.getIntExtra(EXTRA_RESULT_CODE, 0) ?: 0
         val data: android.content.Intent? = if (android.os.Build.VERSION.SDK_INT >= 33) {
             intent?.getParcelableExtra(EXTRA_RESULT_DATA, android.content.Intent::class.java)
@@ -420,7 +429,7 @@ class GameScreenCaptureService : android.app.Service() {
         val height = metrics.heightPixels.coerceAtLeast(1)
         thread = android.os.HandlerThread("x-game-assistant-ocr").also { it.start() }
         handler = android.os.Handler(thread!!.looper)
-        reader = android.media.ImageReader.newInstance(width, height, android.graphics.PixelFormat.RGBA_8888, 2)
+        reader = android.media.ImageReader.newInstance(width, height, android.graphics.ImageFormat.YUV_420_888, 2)
         reader?.setOnImageAvailableListener({ source ->
             val image = source.acquireLatestImage() ?: return@setOnImageAvailableListener
             if (busy) {
