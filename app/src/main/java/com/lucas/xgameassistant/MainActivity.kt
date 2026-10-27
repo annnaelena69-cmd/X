@@ -280,7 +280,7 @@ data class StrategyAdvice(
     val confidence: Int
 )
 
-private interface LocalGameStrategy {
+interface LocalGameStrategy {
     fun analyze(text: String): StrategyAdvice
 }
 
